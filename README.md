@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="./public/logo.png" alt="AntiVault Logo" width="100" height="100" />
+<img src="./docs/logo.png" alt="AntiVault Logo" width="100" height="100" />
 
 ### Antigravity 多账号管理与额度监控工具
 **All-in-One Multi-Account & Quota Manager for Google Antigravity**
@@ -13,6 +13,11 @@
 [![Tailwind CSS v4](https://img.shields.io/badge/Tailwind-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)](https://www.microsoft.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+<br />
+<br />
+
+<img src="./docs/preview.png" alt="AntiVault Preview" width="480" />
 
 </div>
 
@@ -110,6 +115,8 @@ npm run tauri build
 
 ```text
 AntiVault/
+├── docs/                         # 项目文档与截图资源
+│   └── preview.png               # 应用界面预览截图
 ├── src/                          # 前端源码 (React 19 + TypeScript)
 │   ├── assets/                   # 静态图标与资源
 │   ├── components/               # UI 组件库

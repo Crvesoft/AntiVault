@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri app and create release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.version || github.ref_name }}
+          releaseName: 'AntiVault ${{ github.event.inputs.version || github.ref_name }}'
+          releaseBody: |
+            ### AntiVault 🛡️
+            
+            #### 📦 下载安装 (Downloads)
+            - **Windows NSIS 安装程序**：`AntiVault_*_x64-setup.exe`（推荐）
+            - **Windows MSI 安装包**：`AntiVault_*_x64_en-US.msi`
+            
+            #### ✨ 核心特性
+            - ⚡ 一键无感切换 Antigravity 多账号凭据（CLI + IDE 双端同步）
+            - 📊 实时追踪 Claude、Gemini 等主流模型配额及重置倒计时
+            - 🔄 后台每分钟自动静默刷新，零打扰
+            - 🔀 账号卡片自由拖拽排序并持久化存储
+            - 🔐 深度集成 Windows 凭据管理器（DPAPI 加密），硬件级安全隔离
+          releaseDraft: false
+          prerelease: false
