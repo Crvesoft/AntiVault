@@ -1,0 +1,107 @@
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="avBgGrad" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="50%" stop-color="#0B132B" />
+      <stop offset="100%" stop-color="#030712" />
+    </linearGradient>
+
+    <!-- Outer Stroke Gradient -->
+    <linearGradient id="avStrokeGrad" x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#10B981" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#064E3B" stop-opacity="0.3" />
+    </linearGradient>
+
+    <!-- Anti Ribbon Gradient (Upper 'A' Ascension) -->
+    <linearGradient id="antiRibbon" x1="14" y1="12" x2="48" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="50%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+
+    <!-- Vault Ribbon Gradient (Lower 'V' Lock) -->
+    <linearGradient id="vaultRibbon" x1="16" y1="36" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+
+    <!-- Core Levitating Diamond Glow -->
+    <linearGradient id="coreDiamond" x1="28" y1="27" x2="36" y2="35" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#67E8F9" />
+    </linearGradient>
+
+    <!-- Specular Highlight on Ribbon Top Edge -->
+    <linearGradient id="specularEdge" x1="16" y1="12" x2="32" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Premium Rounded Squircle Badge Base -->
+  <rect
+    x="3.5"
+    y="3.5"
+    width="57"
+    height="57"
+    rx="16"
+    fill="url(#avBgGrad)"
+    stroke="url(#avStrokeGrad)"
+    stroke-width="1.5"
+  />
+
+  <!-- Ambient Inner Subtle Grid / Glow Ring -->
+  <circle
+    cx="32"
+    cy="32"
+    r="19"
+    stroke="#10B981"
+    stroke-width="0.75"
+    stroke-opacity="0.18"
+    stroke-dasharray="3 3"
+  />
+
+  <!-- Isometric Monogram 'A' Ribbon (Anti-Gravity Ascension Delta) -->
+  <path
+    d="M 15 23 L 32 13 L 48 22 L 39 27 L 32 23 L 23 28 L 23 37 L 15 41 Z"
+    fill="url(#antiRibbon)"
+    stroke="#6EE7B7"
+    stroke-width="0.75"
+    stroke-linejoin="round"
+  />
+
+  <!-- Specular Edge Highlight on Peak -->
+  <path
+    d="M 17 22 L 32 13.5 L 46 21.5"
+    stroke="url(#specularEdge)"
+    stroke-width="1.2"
+    stroke-linecap="round"
+  />
+
+  <!-- Isometric Monogram 'V' Ribbon (Secure Vault Cradle) -->
+  <path
+    d="M 49 39 L 32 49 L 16 40 L 25 35 L 32 39 L 41 34 L 41 25 L 49 21 Z"
+    fill="url(#vaultRibbon)"
+    stroke="#34D399"
+    stroke-width="0.75"
+    stroke-linejoin="round"
+  />
+
+  <!-- Center Levitating Anti-Gravity Crystal Core -->
+  <polygon
+    points="32,27 36.5,31 32,35 27.5,31"
+    fill="url(#coreDiamond)"
+  />
+
+  <!-- Core Specular Dot -->
+  <circle cx="32" cy="31" r="1.5" fill="#FFFFFF" />
+
+  <!-- Ambient Micro-Rays -->
+  <line x1="32" y1="24.5" x2="32" y2="23" stroke="#67E8F9" stroke-width="1" stroke-linecap="round" />
+  <line x1="32" y1="37.5" x2="32" y2="39" stroke="#34D399" stroke-width="1" stroke-linecap="round" />
+  <line x1="25" y1="31" x2="23.5" y2="31" stroke="#38BDF8" stroke-width="1" stroke-linecap="round" />
+  <line x1="39" y1="31" x2="40.5" y2="31" stroke="#10B981" stroke-width="1" stroke-linecap="round" />
+</svg>

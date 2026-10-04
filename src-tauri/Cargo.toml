@@ -1,0 +1,47 @@
+[package]
+name = "antivault"
+version = "0.1.0"
+description = "AntiVault - Antigravity Multi-Account Manager"
+authors = ["AntiVault"]
+edition = "2021"
+
+[lib]
+name = "antivault_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+# Without this feature `tauri` compiles with `dev` set, so the binary loads
+# `devUrl` (http://localhost:1420) instead of the embedded `frontendDist`.
+# Production builds must therefore pass `--features custom-protocol`;
+# `npm run tauri build` does this automatically.
+custom-protocol = ["tauri/custom-protocol"]
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "system-proxy"], default-features = false }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+keyring = { version = "3", features = ["windows-native", "sync-secret-service"] }
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.9"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+sysinfo = "0.33"
+dirs = "6"
+thiserror = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
