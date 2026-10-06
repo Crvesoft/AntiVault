@@ -11,7 +11,13 @@ import {
 } from "lucide-react";
 import { AccountInfo } from "../types";
 import { useVaultStore } from "../stores/useVaultStore";
-import { formatResetCountdown, getProgressColor, getPercentTextColor, getMergedIndividualModels } from "../utils/quotaFormat";
+import { 
+  formatResetCountdown, 
+  getProgressColor, 
+  getPercentTextColor, 
+  getMergedIndividualModels 
+} from "../utils/quotaFormat";
+import { QuotaRing } from "./QuotaRing";
 
 interface AccountCardProps {
   account: AccountInfo;
@@ -29,7 +35,8 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account }) => {
     openAccountDetail,
     setDeleteTargetAccount,
     reorderAccounts,
-    addToast
+    addToast,
+    quotaChartType,
   } = useVaultStore();
 
   const [copied, setCopied] = useState(false);
@@ -113,23 +120,58 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account }) => {
 
   const initial = (account.display_name || account.email)[0].toUpperCase();
 
-  const renderQuotaItem = (label: string, quota: any) => {
+  const renderQuotaRingItem = (label: string, quota: any) => {
+    const percent = quota?.remaining_percent;
+    const cd = formatResetCountdown(quota?.reset_at);
+
+    return (
+      <div 
+        className="flex items-center space-x-2.5 py-1"
+        title={cd.dateStr ? `${label} 重置: ${cd.dateStr} (${cd.timeStr})` : undefined}
+      >
+        <QuotaRing
+          percent={percent}
+          size={48}
+          strokeWidth={3.8}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between leading-snug">
+            <span className="font-bold text-xs text-slate-800 dark:text-slate-200">
+              {label}
+            </span>
+            <span className="font-mono font-semibold text-xs text-slate-700 dark:text-slate-300">
+              {cd.timeStr}
+            </span>
+          </div>
+          {cd.dateStr && (
+            <div className="font-mono text-[11px] font-medium leading-snug text-slate-400 dark:text-slate-500 text-right mt-0.5">
+              ({cd.dateStr})
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderQuotaBarItem = (label: string, quota: any) => {
     const percent = quota?.remaining_percent;
     const hasPercent = percent !== null && percent !== undefined;
     const val = hasPercent ? Math.min(100, Math.max(0, percent)) : 100;
     const cd = formatResetCountdown(quota?.reset_at);
 
     return (
-      <div className="space-y-1">
+      <div 
+        className="space-y-1 py-0.5"
+        title={cd.dateStr ? `${label} 重置: ${cd.dateStr} (${cd.timeStr})` : undefined}
+      >
         <div className="flex items-center justify-between text-xs">
-          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">{label}</span>
+          <span className="font-bold text-xs text-slate-800 dark:text-slate-200">{label}</span>
           <span className={`font-mono font-bold text-xs ${getPercentTextColor(percent ?? null)}`}>
             {hasPercent ? `${Math.round(percent)}%` : "100%"}
           </span>
         </div>
         <div 
           className="w-full h-1.5 rounded-full bg-slate-200/70 dark:bg-[#282d38] overflow-hidden"
-          title={cd.dateStr ? `重置: ${cd.dateStr} (${cd.timeStr})` : undefined}
         >
           <div
             className={`h-full rounded-full transition-all duration-300 ${getProgressColor(hasPercent ? percent : 100)}`}
@@ -144,6 +186,13 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account }) => {
         </div>
       </div>
     );
+  };
+
+  const renderQuotaItem = (label: string, quota: any) => {
+    if (quotaChartType === "bar") {
+      return renderQuotaBarItem(label, quota);
+    }
+    return renderQuotaRingItem(label, quota);
   };
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -278,28 +327,28 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account }) => {
         )}
       </div>
 
-      {/* 5小时 & 周限额：双列并排 (grid-cols-2) */}
-      <div className="mt-3 p-3 rounded-xl bg-slate-50/70 dark:bg-[#181b20] border border-slate-200/60 dark:border-[#282c37]">
-        <div className="grid grid-cols-2 gap-3 divide-x divide-slate-200/60 dark:divide-[#282c37]">
+      {/* 核心额度看板：Gemini 与 Claude 对称和谐展示 */}
+      <div className="mt-3 p-3 rounded-2xl bg-slate-50/70 dark:bg-[#181b20] border border-slate-200/70 dark:border-[#282c37]">
+        <div className="grid grid-cols-2 gap-3 divide-x divide-slate-200/70 dark:divide-[#282c37]">
           
-          {/* Claude 列 */}
-          <div className="space-y-2 pr-2">
-            <div className="flex items-center space-x-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500 shadow-2xs" />
-              <span className="font-bold text-xs text-slate-800 dark:text-slate-200">Claude</span>
-            </div>
-            {renderQuotaItem("5h", claude5h)}
-            {renderQuotaItem("Weekly", claudeWeekly)}
-          </div>
-
           {/* Gemini 列 */}
-          <div className="space-y-2 pl-3">
-            <div className="flex items-center space-x-1.5">
+          <div className="space-y-1.5 pr-1.5">
+            <div className="flex items-center space-x-1.5 pb-0.5">
               <span className="w-2 h-2 rounded-full bg-blue-500 shadow-2xs" />
               <span className="font-bold text-xs text-slate-800 dark:text-slate-200">Gemini</span>
             </div>
             {renderQuotaItem("5h", gemini5h)}
             {renderQuotaItem("Weekly", geminiWeekly)}
+          </div>
+
+          {/* Claude 列 */}
+          <div className="space-y-1.5 pl-3">
+            <div className="flex items-center space-x-1.5 pb-0.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 shadow-2xs" />
+              <span className="font-bold text-xs text-slate-800 dark:text-slate-200">Claude</span>
+            </div>
+            {renderQuotaItem("5h", claude5h)}
+            {renderQuotaItem("Weekly", claudeWeekly)}
           </div>
 
         </div>

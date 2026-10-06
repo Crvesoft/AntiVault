@@ -1,6 +1,6 @@
 [package]
 name = "antivault"
-version = "0.1.0"
+version = "1.0.0"
 description = "AntiVault - Antigravity Multi-Account Manager"
 authors = ["AntiVault"]
 edition = "2021"

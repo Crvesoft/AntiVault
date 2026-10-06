@@ -129,7 +129,7 @@ pub async fn get_current_account(db: State<'_, Database>) -> Result<Option<Accou
 }
 
 #[tauri::command]
-pub async fn add_account(request: AddAccountRequest, db: State<'_, Database>) -> Result<AccountInfo, AppError> {
+pub async fn add_account(request: AddAccountRequest, db: State<'_, Database>, app: tauri::AppHandle) -> Result<AccountInfo, AppError> {
     let now = chrono::Utc::now().timestamp();
 
     // `accounts.email` is UNIQUE, so signing in (or re-importing) an email that is
@@ -200,11 +200,13 @@ pub async fn add_account(request: AddAccountRequest, db: State<'_, Database>) ->
         }
     }
 
-    get_account(id, db).await
+    let res = get_account(id, db).await;
+    crate::tray::update_tray_menu(&app);
+    res
 }
 
 #[tauri::command]
-pub async fn delete_account(id: String, db: State<'_, Database>) -> Result<(), AppError> {
+pub async fn delete_account(id: String, db: State<'_, Database>, app: tauri::AppHandle) -> Result<(), AppError> {
     let conn = db.conn()?;
 
     // Get token_ref to delete from secure storage
@@ -228,11 +230,12 @@ pub async fn delete_account(id: String, db: State<'_, Database>) -> Result<(), A
     // Delete from database (cascades to quotas)
     conn.execute("DELETE FROM accounts WHERE id = ?1", params![id])?;
 
+    crate::tray::update_tray_menu(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_current_account(id: String, db: State<'_, Database>) -> Result<(), AppError> {
+pub async fn set_current_account(id: String, db: State<'_, Database>, app: tauri::AppHandle) -> Result<(), AppError> {
     let conn = db.conn()?;
     let now = chrono::Utc::now().timestamp();
 
@@ -256,11 +259,12 @@ pub async fn set_current_account(id: String, db: State<'_, Database>) -> Result<
         params![now, id],
     )?;
 
+    crate::tray::update_tray_menu(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn reorder_accounts(account_ids: Vec<String>, db: State<'_, Database>) -> Result<(), AppError> {
+pub async fn reorder_accounts(account_ids: Vec<String>, db: State<'_, Database>, app: tauri::AppHandle) -> Result<(), AppError> {
     let mut conn = db.conn()?;
     let tx = conn.transaction().map_err(|e| AppError::DatabaseError(e.to_string()))?;
     for (idx, id) in account_ids.iter().enumerate() {
@@ -270,6 +274,7 @@ pub async fn reorder_accounts(account_ids: Vec<String>, db: State<'_, Database>)
         ).map_err(|e| AppError::DatabaseError(e.to_string()))?;
     }
     tx.commit().map_err(|e| AppError::DatabaseError(e.to_string()))?;
+    crate::tray::update_tray_menu(&app);
     Ok(())
 }
 
@@ -297,7 +302,7 @@ async fn fetch_google_userinfo_fast(access_token: &str) -> (Option<String>, Opti
 }
 
 #[tauri::command]
-pub async fn import_local_accounts(db: State<'_, Database>) -> Result<Vec<AccountInfo>, AppError> {
+pub async fn import_local_accounts(db: State<'_, Database>, app: tauri::AppHandle) -> Result<Vec<AccountInfo>, AppError> {
     let mut discovered: Vec<AccountInfo> = Vec::new();
 
     // 1. Scan Antigravity 2.0 (Windows Credential Manager gemini:antigravity)
@@ -332,7 +337,7 @@ pub async fn import_local_accounts(db: State<'_, Database>) -> Result<Vec<Accoun
                     access_token: if token_to_use.is_empty() { None } else { Some(token_to_use) },
                     subscription_type: None,
                 };
-                if let Ok(account) = add_account(request, db.clone()).await {
+                if let Ok(account) = add_account(request, db.clone(), app.clone()).await {
                     discovered.push(account);
                 }
             }
@@ -379,7 +384,7 @@ pub async fn import_local_accounts(db: State<'_, Database>) -> Result<Vec<Accoun
                             subscription_type: None,
                         };
 
-                        match add_account(request, db.clone()).await {
+                        match add_account(request, db.clone(), app.clone()).await {
                             Ok(account) => discovered.push(account),
                             Err(e) => {
                                 tracing::warn!("Failed to import account {}: {}", email, e);
@@ -391,6 +396,7 @@ pub async fn import_local_accounts(db: State<'_, Database>) -> Result<Vec<Accoun
         }
     }
 
+    crate::tray::update_tray_menu(&app);
     Ok(discovered)
 }
 

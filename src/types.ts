@@ -70,3 +70,22 @@ export interface ToastMessage {
   title: string;
   description?: string;
 }
+
+export type QuotaChartType = "ring" | "bar";
+
+export interface AppSettings {
+  close_to_tray: boolean;
+  auto_check_update: boolean;
+  quota_chart_type?: QuotaChartType;
+}
+
+export interface UpdateCheckResult {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  release_notes: string | null;
+  release_url: string | null;
+  published_at: string | null;
+  message: string | null;
+}
+

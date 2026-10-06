@@ -105,8 +105,8 @@ npm run tauri dev
 npm run tauri build
 ```
 打包成功后，可在以下路径获取安装文件：
-- **NSIS 安装包**：`src-tauri/target/release/bundle/nsis/AntiVault_0.1.0_x64-setup.exe`
-- **MSI 安装包**：`src-tauri/target/release/bundle/msi/AntiVault_0.1.0_x64_en-US.msi`
+- **NSIS 安装包**：`src-tauri/target/release/bundle/nsis/AntiVault_1.0.0_x64-setup.exe`
+- **MSI 安装包**：`src-tauri/target/release/bundle/msi/AntiVault_1.0.0_x64_en-US.msi`
 - **免安装可执行文件**：`src-tauri/target/release/antivault.exe`
 
 ---

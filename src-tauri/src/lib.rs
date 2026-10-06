@@ -3,6 +3,7 @@ use tauri::Manager;
 pub mod commands;
 pub mod error;
 pub mod storage;
+pub mod tray;
 pub mod utils;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -15,6 +16,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(db)
         .setup(|app| {
+            // Setup system tray
+            if let Err(e) = tray::setup_tray(app.handle()) {
+                tracing::error!("Failed to setup system tray: {}", e);
+            }
+
             if let Some(win) = app.get_webview_window("main") {
                 // 1. Restore saved size & state before window is shown
                 if let Some(saved) = utils::window_state::load_window_state() {
@@ -26,23 +32,32 @@ pub fn run() {
                     }
                 }
 
-                // 2. Native OS window event listener to reliably persist window size & maximized state
+                // 2. Native OS window event listener: persist window size and intercept close to hide to tray
                 let win_clone = win.clone();
                 win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Resized(_) = event {
-                        if let Ok(is_max) = win_clone.is_maximized() {
-                            if !is_max {
-                                if let Ok(scale) = win_clone.scale_factor() {
-                                    if let Ok(size) = win_clone.outer_size() {
-                                        let w = (size.width as f64) / scale;
-                                        let h = (size.height as f64) / scale;
-                                        utils::window_state::save_window_state(w, h, false);
-                                    }
-                                }
-                            } else {
-                                utils::window_state::save_window_state(0.0, 0.0, true);
+                    match event {
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            if !tray::is_quitting() && tray::get_close_to_tray() {
+                                api.prevent_close();
+                                let _ = win_clone.hide();
                             }
                         }
+                        tauri::WindowEvent::Resized(_) => {
+                            if let Ok(is_max) = win_clone.is_maximized() {
+                                if !is_max {
+                                    if let Ok(scale) = win_clone.scale_factor() {
+                                        if let Ok(size) = win_clone.outer_size() {
+                                            let w = (size.width as f64) / scale;
+                                            let h = (size.height as f64) / scale;
+                                            utils::window_state::save_window_state(w, h, false);
+                                        }
+                                    }
+                                } else {
+                                    utils::window_state::save_window_state(0.0, 0.0, true);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 });
 
@@ -76,6 +91,9 @@ pub fn run() {
             commands::system::switch_account,
             commands::system::save_window_size,
             commands::system::get_saved_window_size,
+            commands::system::get_app_settings,
+            commands::system::save_app_settings,
+            commands::system::check_for_updates,
             // OAuth commands
             commands::oauth::start_google_login,
             commands::oauth::complete_google_login,

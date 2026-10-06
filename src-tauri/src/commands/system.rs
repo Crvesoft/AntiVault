@@ -327,6 +327,7 @@ pub async fn switch_account(
     account_id: String,
     auto_restart: Option<bool>,
     db: State<'_, Database>,
+    app: tauri::AppHandle,
 ) -> Result<SwitchResult, AppError> {
     let restart = auto_restart.unwrap_or(false);
 
@@ -445,6 +446,9 @@ pub async fn switch_account(
     }
 
 
+    // 8. Update system tray menu & tooltip
+    crate::tray::update_tray_menu(&app);
+
     Ok(SwitchResult {
         success: true,
         was_running,
@@ -463,10 +467,124 @@ pub fn get_saved_window_size() -> Option<crate::utils::window_state::WindowState
     crate::utils::window_state::load_window_state()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCheckResult {
+    pub has_update: bool,
+    pub current_version: String,
+    pub latest_version: String,
+    pub release_notes: Option<String>,
+    pub release_url: Option<String>,
+    pub published_at: Option<String>,
+    pub message: Option<String>,
+}
+
+fn parse_semver(s: &str) -> (u32, u32, u32) {
+    let clean = s.trim().trim_start_matches('v');
+    let mut parts = clean.split('.').filter_map(|p| p.parse::<u32>().ok());
+    (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    )
+}
+
+fn is_newer_version(current: &str, latest: &str) -> bool {
+    let c = parse_semver(current);
+    let l = parse_semver(latest);
+    l > c
+}
+
+#[tauri::command]
+pub fn get_app_settings() -> crate::utils::settings::AppSettings {
+    crate::utils::settings::load_settings()
+}
+
+#[tauri::command]
+pub fn save_app_settings(settings: crate::utils::settings::AppSettings) -> crate::utils::settings::AppSettings {
+    crate::utils::settings::save_settings(&settings);
+    crate::tray::set_close_to_tray(settings.close_to_tray);
+    settings
+}
+
+#[tauri::command]
+pub async fn check_for_updates() -> Result<UpdateCheckResult, AppError> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let client = crate::utils::http::build_http_client(std::time::Duration::from_secs(10))?;
+    let resp = client
+        .get("https://api.github.com/repos/Crvesoft/AntiVault/releases/latest")
+        .header("User-Agent", "AntiVault-Desktop")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await;
+
+    match resp {
+        Ok(r) if r.status().is_success() => {
+            if let Ok(json) = r.json::<serde_json::Value>().await {
+                let tag_name = json.get("tag_name").and_then(|v| v.as_str()).unwrap_or("").trim();
+                let release_url = json.get("html_url").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let release_notes = json.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let published_at = json.get("published_at").and_then(|v| v.as_str()).map(|s| s.to_string());
+                
+                let has_update = is_newer_version(&current_version, tag_name);
+                let latest_display = if tag_name.starts_with('v') { tag_name.to_string() } else { format!("v{}", tag_name) };
+                Ok(UpdateCheckResult {
+                    has_update,
+                    current_version: format!("v{}", current_version),
+                    latest_version: if tag_name.is_empty() { format!("v{}", current_version) } else { latest_display },
+                    release_notes,
+                    release_url: release_url.or_else(|| Some("https://github.com/Crvesoft/AntiVault/releases".into())),
+                    published_at,
+                    message: if has_update {
+                        Some(format!("发现新版本 {}", tag_name))
+                    } else {
+                        Some("当前已是最新版本".into())
+                    },
+                })
+            } else {
+                Ok(UpdateCheckResult {
+                    has_update: false,
+                    current_version: format!("v{}", current_version),
+                    latest_version: format!("v{}", current_version),
+                    release_notes: None,
+                    release_url: Some("https://github.com/Crvesoft/AntiVault/releases".into()),
+                    published_at: None,
+                    message: Some("当前已是最新版本".into()),
+                })
+            }
+        }
+        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => {
+            Ok(UpdateCheckResult {
+                has_update: false,
+                current_version: format!("v{}", current_version),
+                latest_version: format!("v{}", current_version),
+                release_notes: None,
+                release_url: Some("https://github.com/Crvesoft/AntiVault/releases".into()),
+                published_at: None,
+                message: Some("当前已是最新版本（暂无更新发布）".into()),
+            })
+        }
+        Ok(r) => {
+            Err(AppError::Internal(format!("GitHub API 返回状态码: {}", r.status())))
+        }
+        Err(e) => {
+            Err(AppError::Internal(format!("检查更新网络请求失败: {}", e)))
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_version_compare() {
+        assert!(is_newer_version("0.1.0", "v0.1.1"));
+        assert!(is_newer_version("0.1.0", "0.2.0"));
+        assert!(is_newer_version("0.1.0", "1.0.0"));
+        assert!(!is_newer_version("0.1.0", "v0.1.0"));
+        assert!(!is_newer_version("0.2.0", "v0.1.9"));
+    }
 
     #[test]
     fn test_processes() {

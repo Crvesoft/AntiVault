@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
-import { Minus, Square, X, Moon, Sun } from "lucide-react";
+import { Minus, Square, X } from "lucide-react";
 import { useVaultStore } from "../stores/useVaultStore";
 import { AntiVaultLogo } from "./AntiVaultLogo";
 
 export const TitleBar: React.FC = () => {
-  const { addToast, theme, toggleTheme } = useVaultStore();
+  const { addToast, closeToTray } = useVaultStore();
   const [busy, setBusy] = useState<"minimize" | "maximize" | "close" | null>(null);
 
   const runWindowAction = async (
@@ -48,7 +48,13 @@ export const TitleBar: React.FC = () => {
     runWindowAction("maximize", () => getCurrentWindow().toggleMaximize());
 
   const handleClose = () =>
-    runWindowAction("close", () => getCurrentWindow().close());
+    runWindowAction("close", async () => {
+      if (closeToTray) {
+        await getCurrentWindow().hide();
+      } else {
+        await getCurrentWindow().close();
+      }
+    });
 
   return (
     <header
@@ -62,15 +68,6 @@ export const TitleBar: React.FC = () => {
 
       {/* Window Controls */}
       <div className="flex items-center space-x-0.5">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-[#282d38] transition-colors mr-1"
-          title={theme === "dark" ? "切换为浅色模式" : "切换为深色模式"}
-          aria-label="切换界面主题"
-        >
-          {theme === "dark" ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-        </button>
         <button
           type="button"
           onClick={handleMinimize}
@@ -96,7 +93,7 @@ export const TitleBar: React.FC = () => {
           onClick={handleClose}
           disabled={busy !== null}
           className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors disabled:opacity-40"
-          title="关闭"
+          title={closeToTray ? "关闭到系统托盘（后台常驻）" : "关闭程序"}
           aria-label="关闭窗口"
         >
           <X className="w-4 h-4" />

@@ -33,4 +33,5 @@ src-tauri/target
 .env
 .env.*
 .env.local
+.acl-recovery/
 

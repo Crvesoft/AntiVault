@@ -591,7 +591,7 @@ pub async fn start_google_login(
     };
 
     // 5. Exchange the code and persist the account.
-    finish_login(code, &verifier, &redirect_uri, db).await
+    finish_login(code, &verifier, &redirect_uri, db, &app).await
 }
 
 /// Exchanges an authorization code for tokens, stores the account and returns it.
@@ -602,6 +602,7 @@ async fn finish_login(
     verifier: &str,
     redirect_uri: &str,
     db: State<'_, Database>,
+    app: &tauri::AppHandle,
 ) -> Result<AccountInfo, AppError> {
     let client = crate::utils::http::build_http_client(std::time::Duration::from_secs(30))?;
     let client_id = crate::utils::get_oauth_client_id();
@@ -665,7 +666,7 @@ async fn finish_login(
         subscription_type: None,
     };
 
-    let account = add_account(add_req, db.clone()).await?;
+    let account = add_account(add_req, db.clone(), app.clone()).await?;
 
     // Initial quota fetch (best effort — never fails the login)
     let _ = refresh_quota(account.id.clone(), db.clone()).await;
@@ -758,7 +759,7 @@ pub async fn complete_google_login(
         }
     };
 
-    let account = finish_login(code, &verifier, &redirect_uri, db).await?;
+    let account = finish_login(code, &verifier, &redirect_uri, db, &app).await?;
 
     // The flow is finished; wake the waiting listener, drop the pending material and
     // forget this (single-use) flow so the code cannot be replayed.

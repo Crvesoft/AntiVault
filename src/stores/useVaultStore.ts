@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { AccountInfo, AntigravityStatus, QuotaRecord, ToastMessage } from "../types";
+import { AccountInfo, AntigravityStatus, QuotaRecord, ToastMessage, UpdateCheckResult, QuotaChartType } from "../types";
 import { api } from "../services/api";
 
 interface VaultState {
@@ -24,6 +24,20 @@ interface VaultState {
   isDeletingAccount: boolean;
   searchQuery: string;
   toasts: ToastMessage[];
+
+  // Settings & Updates
+  isSettingsModalOpen: boolean;
+  closeToTray: boolean;
+  autoCheckUpdate: boolean;
+  quotaChartType: QuotaChartType;
+  isCheckingUpdate: boolean;
+  updateResult: UpdateCheckResult | null;
+  setIsSettingsModalOpen: (open: boolean) => void;
+  setCloseToTray: (enabled: boolean) => Promise<void>;
+  setAutoCheckUpdate: (enabled: boolean) => Promise<void>;
+  setQuotaChartType: (type: QuotaChartType) => Promise<void>;
+  checkForUpdates: (silent?: boolean) => Promise<UpdateCheckResult | null>;
+  loadSettings: () => Promise<void>;
 
   // Actions
   loadInitialData: () => Promise<void>;
@@ -78,6 +92,108 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   toasts: [],
   theme: (localStorage.getItem("antivault_theme") as "dark" | "light") || "dark",
 
+  // Settings
+  isSettingsModalOpen: false,
+  closeToTray: localStorage.getItem("antivault_close_to_tray") !== "false",
+  autoCheckUpdate: localStorage.getItem("antivault_auto_check_update") !== "false",
+  quotaChartType: ((localStorage.getItem("antivault_quota_chart_type") as QuotaChartType) || "ring"),
+  isCheckingUpdate: false,
+  updateResult: null,
+
+  setIsSettingsModalOpen: (isSettingsModalOpen) => set({ isSettingsModalOpen }),
+
+  loadSettings: async () => {
+    try {
+      const s = await api.getAppSettings();
+      const chartType = (s.quota_chart_type as QuotaChartType) || "ring";
+      set({ 
+        closeToTray: s.close_to_tray, 
+        autoCheckUpdate: s.auto_check_update,
+        quotaChartType: chartType,
+      });
+      localStorage.setItem("antivault_close_to_tray", String(s.close_to_tray));
+      localStorage.setItem("antivault_auto_check_update", String(s.auto_check_update));
+      localStorage.setItem("antivault_quota_chart_type", chartType);
+    } catch (e) {
+      console.warn("Using local settings fallback:", e);
+    }
+  },
+
+  setCloseToTray: async (enabled: boolean) => {
+    set({ closeToTray: enabled });
+    localStorage.setItem("antivault_close_to_tray", String(enabled));
+    try {
+      await api.saveAppSettings({
+        close_to_tray: enabled,
+        auto_check_update: get().autoCheckUpdate,
+        quota_chart_type: get().quotaChartType,
+      });
+    } catch (e) {
+      console.error("Failed to save close_to_tray setting:", e);
+    }
+  },
+
+  setAutoCheckUpdate: async (enabled: boolean) => {
+    set({ autoCheckUpdate: enabled });
+    localStorage.setItem("antivault_auto_check_update", String(enabled));
+    try {
+      await api.saveAppSettings({
+        close_to_tray: get().closeToTray,
+        auto_check_update: enabled,
+        quota_chart_type: get().quotaChartType,
+      });
+    } catch (e) {
+      console.error("Failed to save auto_check_update setting:", e);
+    }
+  },
+
+  setQuotaChartType: async (type: QuotaChartType) => {
+    set({ quotaChartType: type });
+    localStorage.setItem("antivault_quota_chart_type", type);
+    try {
+      await api.saveAppSettings({
+        close_to_tray: get().closeToTray,
+        auto_check_update: get().autoCheckUpdate,
+        quota_chart_type: type,
+      });
+    } catch (e) {
+      console.error("Failed to save quota_chart_type setting:", e);
+    }
+  },
+
+  checkForUpdates: async (silent = false) => {
+    set({ isCheckingUpdate: true });
+    try {
+      const res = await api.checkForUpdates();
+      set({ updateResult: res });
+      if (res.has_update) {
+        get().addToast({
+          type: "info",
+          title: "发现新版本可用",
+          description: `${res.message || "发现新版本"}（当前: ${res.current_version}，最新: ${res.latest_version}）`,
+        });
+      } else if (!silent) {
+        get().addToast({
+          type: "success",
+          title: "已是最新版本",
+          description: `当前版本 ${res.current_version} 已是最新稳定版`,
+        });
+      }
+      return res;
+    } catch (err: any) {
+      if (!silent) {
+        get().addToast({
+          type: "error",
+          title: "检查更新失败",
+          description: err?.message || String(err),
+        });
+      }
+      return null;
+    } finally {
+      set({ isCheckingUpdate: false });
+    }
+  },
+
   toggleTheme: () => {
     const next = get().theme === "dark" ? "light" : "dark";
     localStorage.setItem("antivault_theme", next);
@@ -123,7 +239,10 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   loadInitialData: async () => {
     set({ isLoading: true });
     try {
-      await Promise.all([get().fetchAccounts(), get().fetchStatus()]);
+      await Promise.all([get().fetchAccounts(), get().fetchStatus(), get().loadSettings()]);
+      if (get().autoCheckUpdate) {
+        get().checkForUpdates(true);
+      }
       
       // Load cached quotas for accounts
       const accounts = get().accounts;

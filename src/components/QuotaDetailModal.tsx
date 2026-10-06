@@ -3,6 +3,7 @@ import { X, RotateCw, Clock, Search, Layers, ShieldCheck, Sparkles, CheckCircle2
 import { useVaultStore } from "../stores/useVaultStore";
 import { formatResetCountdown, getProgressColor, getPercentTextColor, getMergedIndividualModels } from "../utils/quotaFormat";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { QuotaRing } from "./QuotaRing";
 
 export const QuotaDetailModal: React.FC = () => {
   const { 
@@ -12,7 +13,8 @@ export const QuotaDetailModal: React.FC = () => {
     setDetailModalTab,
     quotas, 
     fetchQuota,
-    accounts
+    accounts,
+    quotaChartType,
   } = useVaultStore();
 
   const [modelSearch, setModelSearch] = useState("");
@@ -83,19 +85,58 @@ export const QuotaDetailModal: React.FC = () => {
     }
     if (cd.timeStr === "已就绪") {
       return (
-        <div className="text-xs text-emerald-600 font-medium flex items-center gap-1 font-mono pt-0.5">
+        <div className="text-xs font-semibold flex items-center gap-1.5 font-mono pt-0.5 text-emerald-600 dark:text-emerald-400">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
           <span>已就绪</span>
-          {cd.dateStr && <span className="text-slate-400 font-normal">({cd.dateStr})</span>}
+          {cd.dateStr && <span className="text-slate-400 dark:text-slate-500 font-normal">({cd.dateStr})</span>}
         </div>
       );
     }
     return (
-      <div className="flex items-center justify-between text-xs font-mono pt-0.5">
-        <span className="font-semibold text-slate-800">{cd.timeStr}</span>
+      <div className="flex flex-col text-xs font-mono pt-0.5">
+        <span className="font-semibold text-slate-800 dark:text-slate-200">{cd.timeStr}</span>
         {cd.dateStr && (
-          <span className="text-[11px] text-slate-500 font-medium">({cd.dateStr})</span>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">({cd.dateStr})</span>
         )}
+      </div>
+    );
+  };
+
+  const renderModalQuotaItem = (label: string, quota: any) => {
+    const percent = quota?.remaining_percent;
+    const pNum = getPercentNum(percent);
+
+    if (quotaChartType === "bar") {
+      return (
+        <div className="p-3 rounded-xl bg-white dark:bg-[#20242b] border border-slate-200/80 dark:border-[#2c323f] space-y-1.5 shadow-2xs">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-800 dark:text-slate-200">{label}</span>
+            <span className={`font-mono font-bold ${getPercentTextColor(pNum)}`}>
+              {pNum !== null ? `${pNum}%` : "100%"}
+            </span>
+          </div>
+          <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-[#282d38] overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${getProgressColor(pNum ?? 100)}`}
+              style={{ width: `${Math.min(100, Math.max(0, pNum ?? 100))}%` }}
+            />
+          </div>
+          {renderModalCountdown(quota?.reset_at)}
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-3 rounded-xl bg-white dark:bg-[#20242b] border border-slate-200/80 dark:border-[#2c323f] flex items-center space-x-3 shadow-2xs">
+        <QuotaRing
+          percent={pNum}
+          size={48}
+          strokeWidth={3.8}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-bold text-slate-800 dark:text-slate-200">{label}</div>
+          {renderModalCountdown(quota?.reset_at)}
+        </div>
       </div>
     );
   };
@@ -215,33 +256,58 @@ export const QuotaDetailModal: React.FC = () => {
                       const countdown = formatResetCountdown(m?.reset_at);
                       const safeName = m?.model_name || "未知模型";
 
+                      if (quotaChartType === "bar") {
+                        return (
+                          <div
+                            key={`${m.id || safeName}-${idx}`}
+                            className="p-3 rounded-2xl bg-white dark:bg-[#20242b] border border-slate-200/90 dark:border-[#2c323f] shadow-2xs hover:border-slate-300 dark:hover:border-[#3b4354] transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate pr-2">
+                                {safeName}
+                              </span>
+                              <span className={`font-mono text-xs font-bold shrink-0 ${getPercentTextColor(pNum)}`}>
+                                {pNum !== null ? `${pNum}%` : "100%"}
+                              </span>
+                            </div>
+                            <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-[#282d38] mt-2 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-300 ${getProgressColor(pNum ?? 100)}`}
+                                style={{ width: `${Math.min(100, Math.max(0, pNum ?? 100))}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 mt-2 font-mono">
+                              <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">{countdown.timeStr}</span>
+                              {countdown.dateStr && (
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">({countdown.dateStr})</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div
                           key={`${m.id || safeName}-${idx}`}
-                          className="p-3 rounded-2xl bg-white dark:bg-[#20242b] border border-slate-200/90 dark:border-[#2c323f] shadow-2xs hover:border-slate-300 dark:hover:border-[#3b4354] transition-colors"
+                          className="p-3 rounded-2xl bg-white dark:bg-[#20242b] border border-slate-200/90 dark:border-[#2c323f] shadow-2xs hover:border-slate-300 dark:hover:border-[#3b4354] transition-colors flex items-center space-x-3.5"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate pr-2">
+                          <QuotaRing
+                            percent={pNum}
+                            size={44}
+                            strokeWidth={3.6}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
                               {safeName}
-                            </span>
-                            <span className={`font-mono text-xs font-bold shrink-0 ${getPercentTextColor(pNum)}`}>
-                              {pNum !== null ? `${pNum}%` : "100%"}
-                            </span>
-                          </div>
-
-                          <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-[#282d38] mt-2 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full transition-all duration-300 ${getProgressColor(pNum ?? 100)}`}
-                              style={{ width: `${Math.min(100, Math.max(0, pNum ?? 100))}%` }}
-                            />
-                          </div>
-
-                          <div className="flex items-center space-x-1.5 text-xs text-slate-600 dark:text-slate-400 mt-2 font-mono">
-                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">{countdown.timeStr}</span>
-                            {countdown.dateStr && (
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">({countdown.dateStr})</span>
-                            )}
+                            </div>
+                            <div className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
+                              <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="font-semibold text-slate-700 dark:text-slate-300">{countdown.timeStr}</span>
+                              {countdown.dateStr && (
+                                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">({countdown.dateStr})</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
@@ -250,103 +316,35 @@ export const QuotaDetailModal: React.FC = () => {
                 )}
               </div>
             ) : (
-              /* 核心额度看板 (Claude & Gemini) */
+              /* 核心额度看板 (Gemini & Claude 对称和谐) */
               <div className="space-y-3">
-                {/* Claude 卡片 */}
-                <div className="p-3.5 rounded-2xl bg-amber-50/30 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 space-y-2.5">
-                  <div className="flex items-center space-x-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Claude 模型组</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2.5 pt-0.5">
-                    {/* 5h 限额 */}
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#20242b] border border-slate-200/80 dark:border-[#2c323f] space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-600 dark:text-slate-400 font-medium">5h 限额</span>
-                        <span className={`font-mono font-bold ${getPercentTextColor(getPercentNum(claude5h?.remaining_percent))}`}>
-                          {getPercentNum(claude5h?.remaining_percent) !== null 
-                            ? `${getPercentNum(claude5h?.remaining_percent)}%` 
-                            : "100%"}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-[#282d38] overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${getProgressColor(getPercentNum(claude5h?.remaining_percent) ?? 100)}`}
-                          style={{ width: `${Math.min(100, Math.max(0, getPercentNum(claude5h?.remaining_percent) ?? 100))}%` }}
-                        />
-                      </div>
-                      {renderModalCountdown(claude5h?.reset_at)}
-                    </div>
-
-                    {/* 周限额 */}
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#20242b] border border-slate-200/80 dark:border-[#2c323f] space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-600 dark:text-slate-400 font-medium">周限额</span>
-                        <span className={`font-mono font-bold ${getPercentTextColor(getPercentNum(claudeWeekly?.remaining_percent))}`}>
-                          {getPercentNum(claudeWeekly?.remaining_percent) !== null 
-                            ? `${getPercentNum(claudeWeekly?.remaining_percent)}%` 
-                            : "100%"}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-[#282d38] overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${getProgressColor(getPercentNum(claudeWeekly?.remaining_percent) ?? 100)}`}
-                          style={{ width: `${Math.min(100, Math.max(0, getPercentNum(claudeWeekly?.remaining_percent) ?? 100))}%` }}
-                        />
-                      </div>
-                      {renderModalCountdown(claudeWeekly?.reset_at)}
-                    </div>
-                  </div>
-                </div>
-
                 {/* Gemini 卡片 */}
-                <div className="p-3.5 rounded-2xl bg-blue-50/30 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40 space-y-2.5">
+                <div className="p-3.5 rounded-2xl bg-slate-50/70 dark:bg-[#181b20] border border-slate-200/80 dark:border-[#282c37] space-y-2.5">
                   <div className="flex items-center space-x-1.5">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="w-2 h-2 rounded-full bg-blue-500 shadow-2xs" />
                     <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Gemini 模型组</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2.5 pt-0.5">
-                    {/* 5h 限额 */}
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#20242b] border border-slate-200/80 dark:border-[#2c323f] space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-600 dark:text-slate-400 font-medium">5h 限额</span>
-                        <span className={`font-mono font-bold ${getPercentTextColor(getPercentNum(gemini5h?.remaining_percent))}`}>
-                          {getPercentNum(gemini5h?.remaining_percent) !== null 
-                            ? `${getPercentNum(gemini5h?.remaining_percent)}%` 
-                            : "100%"}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-[#282d38] overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${getProgressColor(getPercentNum(gemini5h?.remaining_percent) ?? 100)}`}
-                          style={{ width: `${Math.min(100, Math.max(0, getPercentNum(gemini5h?.remaining_percent) ?? 100))}%` }}
-                        />
-                      </div>
-                      {renderModalCountdown(gemini5h?.reset_at)}
-                    </div>
-
-                    {/* 周限额 */}
-                    <div className="p-2.5 rounded-xl bg-white dark:bg-[#20242b] border border-slate-200/80 dark:border-[#2c323f] space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-600 dark:text-slate-400 font-medium">周限额</span>
-                        <span className={`font-mono font-bold ${getPercentTextColor(getPercentNum(geminiWeekly?.remaining_percent))}`}>
-                          {getPercentNum(geminiWeekly?.remaining_percent) !== null 
-                            ? `${getPercentNum(geminiWeekly?.remaining_percent)}%` 
-                            : "100%"}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-[#282d38] overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${getProgressColor(getPercentNum(geminiWeekly?.remaining_percent) ?? 100)}`}
-                          style={{ width: `${Math.min(100, Math.max(0, getPercentNum(geminiWeekly?.remaining_percent) ?? 100))}%` }}
-                        />
-                      </div>
-                      {renderModalCountdown(geminiWeekly?.reset_at)}
-                    </div>
+                    {renderModalQuotaItem("5h 限额", gemini5h)}
+                    {renderModalQuotaItem("周限额", geminiWeekly)}
                   </div>
                 </div>
+
+                {/* Claude 卡片 */}
+                <div className="p-3.5 rounded-2xl bg-slate-50/70 dark:bg-[#181b20] border border-slate-200/80 dark:border-[#282c37] space-y-2.5">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shadow-2xs" />
+                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Claude 模型组</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5 pt-0.5">
+                    {renderModalQuotaItem("5h 限额", claude5h)}
+                    {renderModalQuotaItem("周限额", claudeWeekly)}
+                  </div>
+                </div>
+
+
 
                 {/* 可用 AI 积分说明卡 */}
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#20242b] border border-slate-200 dark:border-[#2c323f] flex items-center justify-between text-xs">

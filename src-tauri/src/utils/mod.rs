@@ -1,6 +1,7 @@
 pub mod protobuf;
 pub mod http;
 pub mod window_state;
+pub mod settings;
 #[cfg(target_os = "windows")]
 pub mod keyring_win;
 

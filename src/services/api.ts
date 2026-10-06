@@ -3,10 +3,12 @@ import {
   AccountInfo,
   AddAccountRequest,
   AntigravityStatus,
+  AppSettings,
   QuotaRecord,
   QuotaRefreshOutcome,
   RefreshAllResult,
   SwitchResult,
+  UpdateCheckResult,
 } from "../types";
 
 export const api = {
@@ -155,6 +157,44 @@ export const api = {
   async getSavedWindowSize(): Promise<{ width: number; height: number; is_maximized: boolean } | null> {
     if (!isTauri()) return null;
     return await invoke<{ width: number; height: number; is_maximized: boolean } | null>("get_saved_window_size");
+  },
+
+  async getAppSettings(): Promise<AppSettings> {
+    if (!isTauri()) {
+      return {
+        close_to_tray: localStorage.getItem("antivault_close_to_tray") !== "false",
+        auto_check_update: localStorage.getItem("antivault_auto_check_update") !== "false",
+        quota_chart_type: (localStorage.getItem("antivault_quota_chart_type") as "ring" | "bar") || "ring",
+      };
+    }
+    return await invoke<AppSettings>("get_app_settings");
+  },
+
+  async saveAppSettings(settings: AppSettings): Promise<AppSettings> {
+    if (!isTauri()) {
+      localStorage.setItem("antivault_close_to_tray", String(settings.close_to_tray));
+      localStorage.setItem("antivault_auto_check_update", String(settings.auto_check_update));
+      if (settings.quota_chart_type) {
+        localStorage.setItem("antivault_quota_chart_type", settings.quota_chart_type);
+      }
+      return settings;
+    }
+    return await invoke<AppSettings>("save_app_settings", { settings });
+  },
+
+  async checkForUpdates(): Promise<UpdateCheckResult> {
+    if (!isTauri()) {
+      return {
+        has_update: false,
+        current_version: "v1.0.0",
+        latest_version: "v1.0.0",
+        release_notes: null,
+        release_url: "https://github.com/Crvesoft/AntiVault/releases",
+        published_at: null,
+        message: "当前已是最新版本（预览环境）",
+      };
+    }
+    return await invoke<UpdateCheckResult>("check_for_updates");
   },
 };
 

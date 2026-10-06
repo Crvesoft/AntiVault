@@ -117,9 +117,36 @@ export function getPercentTextColor(percent: number | string | null | undefined)
   if (percent === null || percent === undefined) return "text-slate-400";
   const p = Number(percent);
   if (isNaN(p)) return "text-slate-400";
-  if (p >= 50) return "text-emerald-600";
-  if (p >= 20) return "text-amber-600";
-  return "text-rose-600";
+  if (p >= 50) return "text-emerald-600 dark:text-emerald-400";
+  if (p >= 20) return "text-amber-600 dark:text-amber-400";
+  return "text-rose-600 dark:text-rose-400";
+}
+
+/**
+ * Returns stroke color classes for circular quota rings (using text-* with stroke="currentColor")
+ */
+export function getRingStrokeColor(
+  percent: number | string | null | undefined,
+  _isMuted: boolean = false
+): string {
+  if (percent === null || percent === undefined) {
+    return "text-slate-300 dark:text-slate-600";
+  }
+  const p = Number(percent);
+  if (isNaN(p)) {
+    return "text-slate-300 dark:text-slate-600";
+  }
+
+  if (p >= 50) return "text-emerald-500 dark:text-emerald-400";
+  if (p >= 20) return "text-amber-500 dark:text-amber-400";
+  return "text-rose-500 dark:text-rose-400";
+}
+
+/**
+ * Returns track color classes for circular quota rings
+ */
+export function getRingTrackColor(_isMuted: boolean = false, _isPrimary: boolean = false): string {
+  return "text-slate-200/80 dark:text-[#282d38]";
 }
 
 /**
