@@ -353,6 +353,7 @@ pub struct QuotaRefreshOutcome {
 pub async fn refresh_quota(
     account_id: String,
     db: State<'_, Database>,
+    app: tauri::AppHandle,
 ) -> Result<QuotaRefreshOutcome, AppError> {
     // 1. Get account from DB
     let token_ref = {
@@ -542,6 +543,8 @@ pub async fn refresh_quota(
         }
     }
 
+    crate::tray::update_tray_menu(&app);
+
     Ok(QuotaRefreshOutcome {
         quotas: db.get_quotas_for_account(&account_id)?,
         warning,
@@ -573,6 +576,7 @@ pub struct RefreshAllResult {
 #[tauri::command]
 pub async fn refresh_all_quotas(
     db: State<'_, Database>,
+    app: tauri::AppHandle,
 ) -> Result<RefreshAllResult, AppError> {
     let ids = {
         let conn = db.conn()?;
@@ -586,7 +590,7 @@ pub async fn refresh_all_quotas(
     let mut failed: Vec<RefreshFailure> = Vec::new();
 
     for id in ids {
-        match refresh_quota(id.clone(), db.clone()).await {
+        match refresh_quota(id.clone(), db.clone(), app.clone()).await {
             Ok(_) => succeeded.push(id),
             Err(e) => {
                 let email = {
@@ -606,6 +610,8 @@ pub async fn refresh_all_quotas(
             }
         }
     }
+
+    crate::tray::update_tray_menu(&app);
 
     let accounts = crate::commands::account::list_accounts(db).await?;
 

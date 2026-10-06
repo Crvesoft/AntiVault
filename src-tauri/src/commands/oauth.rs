@@ -669,7 +669,7 @@ async fn finish_login(
     let account = add_account(add_req, db.clone(), app.clone()).await?;
 
     // Initial quota fetch (best effort — never fails the login)
-    let _ = refresh_quota(account.id.clone(), db.clone()).await;
+    let _ = refresh_quota(account.id.clone(), db.clone(), app.clone()).await;
 
     // Return the fresh account with quota status
     crate::commands::account::get_account(account.id, db).await

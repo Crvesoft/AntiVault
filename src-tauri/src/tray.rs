@@ -48,16 +48,33 @@ pub fn show_tray_message(_title: &str, msg: &str, is_error: bool) {
     }
 }
 
-fn format_account_label(email: &str, display_name: Option<&str>, sub_type: Option<&str>) -> String {
-    let type_str = sub_type.unwrap_or("FREE").to_uppercase();
-    if let Some(name) = display_name {
-        if !name.is_empty() && name != email {
-            format!("{} ({}) [{}]", name, email, type_str)
-        } else {
-            format!("{} [{}]", email, type_str)
-        }
-    } else {
-        format!("{} [{}]", email, type_str)
+#[derive(Debug, Clone)]
+pub struct TrayAccountInfo {
+    pub id: String,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub is_current: bool,
+    pub g_5h: Option<f64>,
+    pub g_weekly: Option<f64>,
+    pub c_5h: Option<f64>,
+    pub c_weekly: Option<f64>,
+}
+
+fn format_account_label(acc: &TrayAccountInfo) -> String {
+    let name = acc
+        .display_name
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| acc.email.split('@').next().unwrap_or(&acc.email));
+
+    let h5 = acc.g_5h.or(acc.c_5h);
+    let weekly = acc.g_weekly.or(acc.c_weekly);
+
+    match (h5, weekly) {
+        (Some(h), Some(w)) => format!("{}  {:.0}% ({:.0}%)", name, h, w),
+        (Some(h), None) => format!("{}  {:.0}%", name, h),
+        _ => format!("{}  --% (--%)", name),
     }
 }
 
@@ -65,36 +82,51 @@ pub fn create_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std
     let menu = Menu::new(app)?;
 
     let db = app.try_state::<Database>();
-    let (accounts, current_email) = if let Some(ref db) = db {
+    let (accounts, current_label) = if let Some(ref db) = db {
         let conn = db.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT id, email, display_name, subscription_type, is_current FROM accounts ORDER BY sort_order ASC, created_at ASC"
+            "SELECT 
+                a.id, 
+                a.email, 
+                a.display_name, 
+                a.is_current,
+                MAX(CASE WHEN q.model_name = 'Gemini (5h)' THEN q.remaining_percent END),
+                MAX(CASE WHEN q.model_name = 'Gemini (Weekly)' THEN q.remaining_percent END),
+                MAX(CASE WHEN q.model_name = 'Claude (5h)' THEN q.remaining_percent END),
+                MAX(CASE WHEN q.model_name = 'Claude (Weekly)' THEN q.remaining_percent END)
+            FROM accounts a
+            LEFT JOIN quotas q ON a.id = q.account_id
+            GROUP BY a.id
+            ORDER BY a.sort_order ASC, a.created_at ASC"
         )?;
         let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, Option<String>>(3)?,
-                row.get::<_, i32>(4)? != 0,
-            ))
+            Ok(TrayAccountInfo {
+                id: row.get(0)?,
+                email: row.get(1)?,
+                display_name: row.get(2)?,
+                is_current: row.get::<_, i32>(3)? != 0,
+                g_5h: row.get(4)?,
+                g_weekly: row.get(5)?,
+                c_5h: row.get(6)?,
+                c_weekly: row.get(7)?,
+            })
         })?;
         let mut list = Vec::new();
-        let mut curr = None;
+        let mut curr_lbl = None;
         for r in rows.flatten() {
-            if r.4 {
-                curr = Some(r.1.clone());
+            if r.is_current {
+                curr_lbl = Some(format_account_label(&r));
             }
             list.push(r);
         }
-        (list, curr)
+        (list, curr_lbl)
     } else {
         (Vec::new(), None)
     };
 
     // Header info
-    let title_text = match current_email {
-        Some(ref email) => format!("AntiVault (当前: {})", email),
+    let title_text = match current_label {
+        Some(ref lbl) => format!("AntiVault (当前: {})", lbl),
         None => "AntiVault (未连接账号)".to_string(),
     };
     let title_item = MenuItem::with_id(app, "header_title", title_text, false, None::<&str>)?;
@@ -106,18 +138,18 @@ pub fn create_tray_menu(app: &AppHandle) -> Result<Menu<tauri::Wry>, Box<dyn std
         let no_acc = MenuItem::with_id(app, "no_accounts", "（暂无账号，点击主界面添加）", false, None::<&str>)?;
         menu.append(&no_acc)?;
     } else if accounts.len() <= 8 {
-        for (id, email, display_name, sub_type, is_current) in &accounts {
-            let label = format_account_label(email, display_name.as_deref(), sub_type.as_deref());
-            let menu_id = format!("switch_account:{}", id);
-            let item = CheckMenuItem::with_id(app, &menu_id, label, true, *is_current, None::<&str>)?;
+        for acc in &accounts {
+            let label = format_account_label(acc);
+            let menu_id = format!("switch_account:{}", acc.id);
+            let item = CheckMenuItem::with_id(app, &menu_id, label, true, acc.is_current, None::<&str>)?;
             menu.append(&item)?;
         }
     } else {
         let sub = Submenu::with_id(app, "switch_submenu", "切换账号", true)?;
-        for (id, email, display_name, sub_type, is_current) in &accounts {
-            let label = format_account_label(email, display_name.as_deref(), sub_type.as_deref());
-            let menu_id = format!("switch_account:{}", id);
-            let item = CheckMenuItem::with_id(app, &menu_id, label, true, *is_current, None::<&str>)?;
+        for acc in &accounts {
+            let label = format_account_label(acc);
+            let menu_id = format!("switch_account:{}", acc.id);
+            let item = CheckMenuItem::with_id(app, &menu_id, label, true, acc.is_current, None::<&str>)?;
             sub.append(&item)?;
         }
         menu.append(&sub)?;
@@ -148,16 +180,41 @@ pub fn update_tray_menu(app: &AppHandle) {
         // Update tray tooltip with current active account
         if let Some(db) = app.try_state::<Database>() {
             if let Ok(conn) = db.conn() {
-                let current_email: Result<String, _> = conn.query_row(
-                    "SELECT email FROM accounts WHERE is_current = 1 LIMIT 1",
-                    [],
-                    |row| row.get(0),
+                let stmt_res = conn.prepare(
+                    "SELECT 
+                        a.id, 
+                        a.email, 
+                        a.display_name, 
+                        a.is_current,
+                        MAX(CASE WHEN q.model_name = 'Gemini (5h)' THEN q.remaining_percent END),
+                        MAX(CASE WHEN q.model_name = 'Gemini (Weekly)' THEN q.remaining_percent END),
+                        MAX(CASE WHEN q.model_name = 'Claude (5h)' THEN q.remaining_percent END),
+                        MAX(CASE WHEN q.model_name = 'Claude (Weekly)' THEN q.remaining_percent END)
+                    FROM accounts a
+                    LEFT JOIN quotas q ON a.id = q.account_id
+                    WHERE a.is_current = 1
+                    GROUP BY a.id
+                    LIMIT 1"
                 );
-                let tooltip = match current_email {
-                    Ok(email) => format!("AntiVault - 当前账号: {}", email),
-                    Err(_) => "AntiVault - Antigravity 多账号管理".to_string(),
-                };
-                let _ = tray.set_tooltip(Some(tooltip));
+                if let Ok(mut stmt) = stmt_res {
+                    let current_acc = stmt.query_row([], |row| {
+                        Ok(TrayAccountInfo {
+                            id: row.get(0)?,
+                            email: row.get(1)?,
+                            display_name: row.get(2)?,
+                            is_current: true,
+                            g_5h: row.get(4)?,
+                            g_weekly: row.get(5)?,
+                            c_5h: row.get(6)?,
+                            c_weekly: row.get(7)?,
+                        })
+                    });
+                    let tooltip = match current_acc {
+                        Ok(acc) => format!("AntiVault - 当前: {}", format_account_label(&acc)),
+                        Err(_) => "AntiVault - Antigravity 多账号管理".to_string(),
+                    };
+                    let _ = tray.set_tooltip(Some(tooltip));
+                }
             }
         }
     }
