@@ -72,9 +72,9 @@ fn format_account_label(acc: &TrayAccountInfo) -> String {
     let weekly = acc.g_weekly.or(acc.c_weekly);
 
     match (h5, weekly) {
-        (Some(h), Some(w)) => format!("{}  {:.0}% ({:.0}%)", name, h, w),
-        (Some(h), None) => format!("{}  {:.0}%", name, h),
-        _ => format!("{}  --% (--%)", name),
+        (Some(h), Some(w)) => format!("{:.0}% ({:.0}%)  {}", h, w, name),
+        (Some(h), None) => format!("{:.0}%  {}", h, name),
+        _ => format!("--% (--%)  {}", name),
     }
 }
 
