@@ -49,10 +49,10 @@ export const App: React.FC = () => {
       fetchStatus();
     }, 4000);
 
-    // Auto silent refresh all quotas every 1 minute
+    // Auto silent refresh all quotas every 20 minutes
     const silentRefreshInterval = setInterval(() => {
       refreshAllQuotas(true);
-    }, 60000);
+    }, 20 * 60 * 1000);
 
     // Listen for tray switch account events
     let unlistenTraySwitch: (() => void) | undefined;

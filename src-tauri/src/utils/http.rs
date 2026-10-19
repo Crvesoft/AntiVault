@@ -188,6 +188,18 @@ pub fn build_http_client(timeout: Duration) -> Result<Client, AppError> {
     builder.build().map_err(AppError::from)
 }
 
+/// Builds an HTTP client specifically for connecting to localhost services
+/// (such as the local Antigravity Language Server). It explicitly disables
+/// any system proxy and accepts local self-signed certificates.
+pub fn build_local_http_client(timeout: Duration) -> Result<Client, AppError> {
+    ClientBuilder::new()
+        .timeout(timeout)
+        .danger_accept_invalid_certs(true)
+        .no_proxy()
+        .build()
+        .map_err(AppError::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

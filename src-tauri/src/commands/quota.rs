@@ -356,14 +356,108 @@ pub async fn refresh_quota(
     app: tauri::AppHandle,
 ) -> Result<QuotaRefreshOutcome, AppError> {
     // 1. Get account from DB
-    let token_ref = {
+    let (is_current, token_ref) = {
         let conn = db.conn()?;
         conn.query_row(
-            "SELECT token_ref FROM accounts WHERE id = ?1",
+            "SELECT is_current, token_ref FROM accounts WHERE id = ?1",
             rusqlite::params![account_id],
-            |row| row.get::<_, String>(0),
+            |row| Ok((row.get::<_, i32>(0)? != 0, row.get::<_, String>(1)?)),
         ).map_err(|_| AppError::AccountNotFound(account_id.clone()))?
     };
+
+    // If this account is the active one in Antigravity, try reading real-time quota from local Language Server first
+    if is_current {
+        if let Some(local_res) = crate::utils::antigravity_ls::fetch_local_ls_quota().await {
+            let now = Utc::now().timestamp();
+
+            // Store summary items (Gemini / Claude 5h & Weekly)
+            for (bucket_name, remaining, reset_at) in &local_res.summary_items {
+                let clean_name = bucket_name.replace([' ', '(', ')'], "_");
+                let quota_rec = QuotaRecord {
+                    id: format!("{}_{}", account_id, clean_name),
+                    account_id: account_id.clone(),
+                    model_name: bucket_name.clone(),
+                    remaining_percent: remaining.map(|r| (r * 100.0).round()),
+                    remaining_value: None,
+                    limit_value: None,
+                    reset_at: *reset_at,
+                    status: "active".to_string(),
+                    updated_at: now,
+                };
+                let _ = db.upsert_quota(&quota_rec);
+            }
+
+            // Normalize and store model quotas
+            let mut merged_models: std::collections::HashMap<String, (Option<f64>, Option<i64>)> = std::collections::HashMap::new();
+            for (model_name, remaining, reset_at) in &local_res.model_items {
+                let clean_name = model_name
+                    .replace(" (High)", "")
+                    .replace(" (Medium)", "")
+                    .replace(" (Low)", "")
+                    .replace("(High)", "")
+                    .replace("(Medium)", "")
+                    .replace("(Low)", "")
+                    .trim()
+                    .to_string();
+
+                merged_models
+                    .entry(clean_name)
+                    .and_modify(|(rem, r_at)| {
+                        if let Some(new_rem) = remaining {
+                            if let Some(old_rem) = *rem {
+                                if *new_rem < old_rem {
+                                    *rem = Some(*new_rem);
+                                    *r_at = *reset_at;
+                                }
+                            } else {
+                                *rem = Some(*new_rem);
+                                *r_at = *reset_at;
+                            }
+                        }
+                    })
+                    .or_insert((*remaining, *reset_at));
+            }
+
+            for (model_name, (remaining, reset_at)) in merged_models {
+                let clean_id_name = model_name.replace([' ', '(', ')', '.', '-'], "_");
+                let quota_rec = QuotaRecord {
+                    id: format!("{}_{}", account_id, clean_id_name),
+                    account_id: account_id.clone(),
+                    model_name,
+                    remaining_percent: remaining.map(|r| (r * 100.0).round()),
+                    remaining_value: None,
+                    limit_value: None,
+                    reset_at,
+                    status: "active".to_string(),
+                    updated_at: now,
+                };
+                let _ = db.upsert_quota(&quota_rec);
+            }
+
+            // Update account metadata (tier & last_quota_update_at)
+            {
+                let conn = db.conn()?;
+                if let Some(ref t) = local_res.tier {
+                    let _ = conn.execute(
+                        "UPDATE accounts SET subscription_type = ?1, last_quota_update_at = ?2, status = 'active', updated_at = ?2 WHERE id = ?3",
+                        rusqlite::params![t, now, account_id],
+                    );
+                } else {
+                    let _ = conn.execute(
+                        "UPDATE accounts SET last_quota_update_at = ?1, status = 'active', updated_at = ?1 WHERE id = ?2",
+                        rusqlite::params![now, account_id],
+                    );
+                }
+            }
+
+            crate::tray::update_tray_menu(&app);
+
+            return Ok(QuotaRefreshOutcome {
+                quotas: db.get_quotas_for_account(&account_id)?,
+                warning: None,
+            });
+        }
+    }
 
     // 2. Read refresh token from keyring
     let entry = keyring::Entry::new("antivault", &token_ref)

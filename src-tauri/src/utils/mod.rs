@@ -2,6 +2,7 @@ pub mod protobuf;
 pub mod http;
 pub mod window_state;
 pub mod settings;
+pub mod antigravity_ls;
 #[cfg(target_os = "windows")]
 pub mod keyring_win;
 
