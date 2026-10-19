@@ -157,10 +157,15 @@ fn extract_csrf_token(cmd: &str) -> Option<String> {
     None
 }
 
-pub fn find_antigravity_ls_info() -> Option<(u32, String, Vec<u16>)> {
+pub fn find_all_antigravity_ls_candidates() -> Vec<(u32, String, Vec<u16>)> {
     let mut system = sysinfo::System::new();
-    system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_cmd(sysinfo::UpdateKind::Always),
+    );
 
+    let mut candidates = Vec::new();
     for (pid, process) in system.processes() {
         let name = process.name().to_string_lossy().to_lowercase();
         let cmd = process
@@ -175,98 +180,65 @@ pub fn find_antigravity_ls_info() -> Option<(u32, String, Vec<u16>)> {
                 let pid_u32 = pid.as_u32();
                 let ports = get_listening_tcp_ports_for_pid(pid_u32);
                 if !ports.is_empty() {
-                    return Some((pid_u32, csrf, ports));
+                    candidates.push((pid_u32, csrf, ports));
                 }
             }
         }
     }
-    None
+    candidates
 }
 
 pub async fn fetch_local_ls_quota() -> Option<LocalQuotaResult> {
-    let (_pid, csrf, ports) = find_antigravity_ls_info()?;
+    let candidates = find_all_antigravity_ls_candidates();
+    if candidates.is_empty() {
+        return None;
+    }
     let client = build_local_http_client(Duration::from_millis(1500)).ok()?;
 
-    for port in ports {
-        for proto in &["https", "http"] {
-            let summary_url = format!("{}://127.0.0.1:{}/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary", proto, port);
-            let resp = client
-                .post(&summary_url)
-                .header("Content-Type", "application/json")
-                .header("X-Codeium-Csrf-Token", &csrf)
-                .header("Connect-Protocol-Version", "1")
-                .json(&json!({}))
-                .send()
-                .await;
+    for (pid, csrf, ports) in candidates {
+        for port in ports {
+            for proto in &["https", "http"] {
+                let summary_url = format!("{}://127.0.0.1:{}/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary", proto, port);
+                let resp = client
+                    .post(&summary_url)
+                    .header("Content-Type", "application/json")
+                    .header("X-Codeium-Csrf-Token", &csrf)
+                    .header("Connect-Protocol-Version", "1")
+                    .json(&json!({}))
+                    .send()
+                    .await;
 
-            if let Ok(res) = resp {
-                if res.status().is_success() {
-                    if let Ok(envelope) = res.json::<LsQuotaSummaryEnvelope>().await {
-                        let mut summary_items = Vec::new();
-                        if let Some(r) = envelope.response {
-                            if let Some(groups) = r.groups {
-                                for group in groups {
-                                    let g_name = group.display_name.unwrap_or_default().to_lowercase();
-                                    let is_claude = g_name.contains("claude") || g_name.contains("3p") || g_name.contains("gpt");
-                                    let is_gemini = g_name.contains("gemini") || g_name.contains("flash");
+                if let Ok(res) = resp {
+                    if res.status().is_success() {
+                        if let Ok(envelope) = res.json::<LsQuotaSummaryEnvelope>().await {
+                            let mut summary_items = Vec::new();
+                            if let Some(r) = envelope.response {
+                                if let Some(groups) = r.groups {
+                                    for group in groups {
+                                        let g_name = group.display_name.unwrap_or_default().to_lowercase();
+                                        let is_claude = g_name.contains("claude") || g_name.contains("3p") || g_name.contains("gpt");
+                                        let is_gemini = g_name.contains("gemini") || g_name.contains("flash");
 
-                                    if let Some(buckets) = group.buckets {
-                                        for b in buckets {
-                                            let window = b.window.unwrap_or_default().to_lowercase();
-                                            let bid = b.bucket_id.unwrap_or_default().to_lowercase();
-                                            let reset_at = b.reset_time.as_ref().and_then(|t| {
-                                                DateTime::parse_from_rfc3339(t).ok().map(|dt| dt.timestamp())
-                                            });
-                                            let rem = b.remaining_fraction;
+                                        if let Some(buckets) = group.buckets {
+                                            for b in buckets {
+                                                let window = b.window.unwrap_or_default().to_lowercase();
+                                                let bid = b.bucket_id.unwrap_or_default().to_lowercase();
+                                                let reset_at = b.reset_time.as_ref().and_then(|t| {
+                                                    DateTime::parse_from_rfc3339(t).ok().map(|dt| dt.timestamp())
+                                                });
+                                                let rem = b.remaining_fraction;
 
-                                            if is_gemini {
-                                                if window == "5h" || bid == "gemini-5h" {
-                                                    summary_items.push(("Gemini (5h)".to_string(), rem, reset_at));
-                                                } else if window == "weekly" || bid == "gemini-weekly" {
-                                                    summary_items.push(("Gemini (Weekly)".to_string(), rem, reset_at));
-                                                }
-                                            } else if is_claude {
-                                                if window == "5h" || bid == "3p-5h" {
-                                                    summary_items.push(("Claude (5h)".to_string(), rem, reset_at));
-                                                } else if window == "weekly" || bid == "3p-weekly" {
-                                                    summary_items.push(("Claude (Weekly)".to_string(), rem, reset_at));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Also fetch model details and tier from GetUserStatus
-                        let status_url = format!("{}://127.0.0.1:{}/exa.language_server_pb.LanguageServerService/GetUserStatus", proto, port);
-                        let mut model_items = Vec::new();
-                        let mut tier_name = None;
-
-                        if let Ok(status_resp) = client
-                            .post(&status_url)
-                            .header("Content-Type", "application/json")
-                            .header("X-Codeium-Csrf-Token", &csrf)
-                            .header("Connect-Protocol-Version", "1")
-                            .json(&json!({"metadata": {"ideName": "antigravity"}}))
-                            .send()
-                            .await
-                        {
-                            if status_resp.status().is_success() {
-                                if let Ok(status_data) = status_resp.json::<LsUserStatusEnvelope>().await {
-                                    if let Some(status) = status_data.user_status {
-                                        tier_name = status.user_tier.and_then(|t| t.name);
-                                        if let Some(cascade) = status.cascade_model_config_data {
-                                            if let Some(configs) = cascade.client_model_configs {
-                                                for cfg in configs {
-                                                    if let Some(label) = cfg.label {
-                                                        let rem = cfg.quota_info.as_ref().and_then(|q| q.remaining_fraction);
-                                                        let reset_at = cfg.quota_info.as_ref().and_then(|q| {
-                                                            q.reset_time.as_ref().and_then(|t| {
-                                                                DateTime::parse_from_rfc3339(t).ok().map(|dt| dt.timestamp())
-                                                            })
-                                                        });
-                                                        model_items.push((label, rem, reset_at));
+                                                if is_gemini {
+                                                    if window == "5h" || bid == "gemini-5h" {
+                                                        summary_items.push(("Gemini (5h)".to_string(), rem, reset_at));
+                                                    } else if window == "weekly" || bid == "gemini-weekly" {
+                                                        summary_items.push(("Gemini (Weekly)".to_string(), rem, reset_at));
+                                                    }
+                                                } else if is_claude {
+                                                    if window == "5h" || bid == "3p-5h" {
+                                                        summary_items.push(("Claude (5h)".to_string(), rem, reset_at));
+                                                    } else if window == "weekly" || bid == "3p-weekly" {
+                                                        summary_items.push(("Claude (Weekly)".to_string(), rem, reset_at));
                                                     }
                                                 }
                                             }
@@ -274,15 +246,53 @@ pub async fn fetch_local_ls_quota() -> Option<LocalQuotaResult> {
                                     }
                                 }
                             }
-                        }
 
-                        if !summary_items.is_empty() {
-                            tracing::info!("Successfully fetched real-time quota from local Antigravity Language Server on port {}", port);
-                            return Some(LocalQuotaResult {
-                                summary_items,
-                                model_items,
-                                tier: tier_name,
-                            });
+                            if !summary_items.is_empty() {
+                                // Also fetch model details and tier from GetUserStatus
+                                let status_url = format!("{}://127.0.0.1:{}/exa.language_server_pb.LanguageServerService/GetUserStatus", proto, port);
+                                let mut model_items = Vec::new();
+                                let mut tier_name = None;
+
+                                if let Ok(status_resp) = client
+                                    .post(&status_url)
+                                    .header("Content-Type", "application/json")
+                                    .header("X-Codeium-Csrf-Token", &csrf)
+                                    .header("Connect-Protocol-Version", "1")
+                                    .json(&json!({"metadata": {"ideName": "antigravity"}}))
+                                    .send()
+                                    .await
+                                {
+                                    if status_resp.status().is_success() {
+                                        if let Ok(status_data) = status_resp.json::<LsUserStatusEnvelope>().await {
+                                            if let Some(status) = status_data.user_status {
+                                                tier_name = status.user_tier.and_then(|t| t.name);
+                                                if let Some(cascade) = status.cascade_model_config_data {
+                                                    if let Some(configs) = cascade.client_model_configs {
+                                                        for cfg in configs {
+                                                            if let Some(label) = cfg.label {
+                                                                let rem = cfg.quota_info.as_ref().and_then(|q| q.remaining_fraction);
+                                                                let reset_at = cfg.quota_info.as_ref().and_then(|q| {
+                                                                    q.reset_time.as_ref().and_then(|t| {
+                                                                        DateTime::parse_from_rfc3339(t).ok().map(|dt| dt.timestamp())
+                                                                    })
+                                                                });
+                                                                model_items.push((label, rem, reset_at));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                tracing::info!("Successfully fetched real-time quota from local Antigravity Language Server PID {} on port {}", pid, port);
+                                return Some(LocalQuotaResult {
+                                    summary_items,
+                                    model_items,
+                                    tier: tier_name,
+                                });
+                            }
                         }
                     }
                 }
@@ -367,5 +377,12 @@ mod tests {
         let configs = status.cascade_model_config_data.unwrap().client_model_configs.unwrap_or_default();
         assert_eq!(configs.len(), 1);
         assert_eq!(configs[0].label.as_deref(), Some("Gemini 2.5 Pro"));
+    }
+
+    #[tokio::test]
+    async fn test_live_fetch_ls() {
+        if let Some(res) = fetch_local_ls_quota().await {
+            assert!(!res.summary_items.is_empty());
+        }
     }
 }
